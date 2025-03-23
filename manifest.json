@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
-  "name": "akblock",
+  "name": "akfiltre",
   "version": "1.0",
-  "description": "aktroll postlarindan arindirir",
+  "description": "aktroll entry'lerini otomatik olarak gizler",
   "permissions": ["scripting", "activeTab", "storage", "alarms"],
   "background": {
     "service_worker": "background.js"
@@ -15,7 +15,7 @@
       "48": "icons/icon48.png",
       "128": "icons/icon128.png"
     },
-    "default_title": "akblock"
+    "default_title": "akfiltre"
   },
   "content_scripts": [
     {
