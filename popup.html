@@ -134,8 +134,30 @@
             font-size: 10px;
             color: #333;
         }
+
+
+         a.url::after {
+             content: "🔗";
+             margin-left: 4px;
+             font-size: 12px;
+             vertical-align: middle;
+         }
+
+         #aktroll-blocker-setttings {
+             padding: 12px;
+             border-radius: 8px;
+             background-color: #ffffff;
+             box-shadow: 0 1px 5px rgba(0, 0, 0, 0.05);
+             margin-top: 16px;
+             display: flex;
+             flex-direction: column;
+             gap: 8px;
+             font-size: 10px;
+             color: #666;
+         }
     </style>
 </head>
+<script src="popup.js"></script>
 <body>
 <div class="header">
     <img src="icons/icon48.png" alt="aktroll blocker icon" />
@@ -145,13 +167,13 @@
 </div>
 
 <div class="button-wrapper">
-    <button id="toggle">Pause</button>
+    <button id="toggle">duraklat</button>
 </div>
 
 <div class="stats">
     <table class="stats-table">
         <tr>
-            <td class="label">bu başlıkta gizlenen entry</td>
+            <td class="label">bu sayfada gizlenen entry</td>
             <td class="value" id="page-count">0</td>
         </tr>
         <tr>
@@ -159,18 +181,38 @@
             <td class="value" id="total-count">0</td>
         </tr>
         <tr>
-            <td class="label">liste toplam yazar sayısı</td>
+
+            <td class="label"><a
+                    href="https://raw.githubusercontent.com/unless7146/stardust3903/refs/heads/main/173732994.txt"
+                    target="_blank"
+                    class="url"
+                    style="color: inherit; text-decoration: none;"
+            > liste toplam yazar sayısı</a> </td>
             <td class="value" id="troll-count">0</td>
         </tr>
         <tr>
-            <td class="label">liste en son güncelleme</td>
+            <td class="label">liste son senkronlama</td>
             <td class="value" id="last-update">--</td>
         </tr>
     </table>
 </div>
 
-<div class="footer">❤️</div>
+<div id="aktroll-blocker-setttings">
+    <div style="display: flex; align-items: center; gap: 8px;">
+        <label for="trollMode" style="white-space: nowrap; min-width: 90px;">troll entry</label>
+        <select id="trollMode">
+            <option value="collapse">gizli göster</option>
+            <option value="hide">tamamen gizle</option>
+        </select>
+    </div>
 
-<script src="popup.js"></script>
+    <div style="display: flex; align-items: center; gap: 8px;">
+        <label for="topicWarningToggle" style="white-space: nowrap; min-width: 90px;">troll başlık uyarısı</label>
+        <input type="checkbox" id="topicWarningToggle" />
+    </div>
+</div>
+
+
+<div class="footer">❤️</div>
 </body>
 </html>
