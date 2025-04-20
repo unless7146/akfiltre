@@ -33,11 +33,15 @@ document.addEventListener("DOMContentLoaded", () => {
 
     toggleBtn.addEventListener("click", () => {
         chrome.storage.local.get(["paused"], (data) => {
+            toggleBtn.disabled = true;
             const newState = !data.paused;
             chrome.storage.local.set({ paused: newState }, () => {
                 toggleBtn.textContent = newState ? "devam et" : "duraklat";
                 toggleBtn.classList.toggle("paused", newState);
                 chrome.runtime.sendMessage({ type: "updateBadgeOnToggle", paused: newState });
+                setTimeout(() => {
+                    toggleBtn.disabled = false;
+                }, 500);
             });
         });
     });
@@ -60,6 +64,10 @@ document.addEventListener("DOMContentLoaded", () => {
     topicWarningToggle.addEventListener("change", () => {
         console.log("changed showTrollTopicWarning", topicWarningToggle.checked)
         chrome.storage.local.set({ showTrollTopicWarning: topicWarningToggle.checked });
+    });
+
+    document.getElementById("open-config").addEventListener("click", () => {
+        chrome.runtime.openOptionsPage();
     });
 
     updateStats();

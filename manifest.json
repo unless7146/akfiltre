@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "aktroll blocker",
-  "version": "1.1",
+  "version": "1.2",
   "description": "aktroll entry'lerini otomatik olarak gizler",
   "permissions": ["storage", "alarms"],
   "background": {
@@ -23,6 +23,7 @@
       "js": ["content.js"]
     }
   ],
+  "options_page": "config.html",
   "icons": {
     "16": "icons/icon16.png",
     "32": "icons/icon32.png",
