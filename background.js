@@ -1,8 +1,17 @@
 const TROLL_LIST_URL = "https://raw.githubusercontent.com/unless7146/stardust3903/refs/heads/main/173732994.txt";
 
+//cache
+const topicCreatorCache = new Map();
+const CACHE_DURATION = 1000 * 60 * 60 * 24; // 24 hour cache
+const MAX_CACHE_SIZE = 500;
+
+// rate limiter for creator info
+const RATE_LIMIT_CREATOR_INFO = 300;
+const limit = createRateLimiter(RATE_LIMIT_CREATOR_INFO);
 
 chrome.runtime.onStartup.addListener(syncTrollList);
 chrome.runtime.onInstalled.addListener(syncTrollList);
+chrome.runtime.onStartup.addListener(cleanTopicCreatorCache);
 
 chrome.alarms.create("updateTrollList", {periodInMinutes: 60 * 24}); // recheck every 24 hours
 chrome.alarms.onAlarm.addListener((alarm) => {
@@ -54,8 +63,39 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
             });
         });
         return true;
+    } else if (message.type === 'getTopicCreator') {
+        const {topicId} = message;
+        const cached = topicCreatorCache.get(topicId);
+
+        if (cached && (Date.now() - cached.timestamp < CACHE_DURATION)) {
+            sendResponse({author: cached.author});
+            return;
+        }
+
+        fetchCreatorInfo(topicId)
+            .then(author => {
+                if (author && author != null) {
+                    addToTopicCreatorCache(topicId, {author, timestamp: Date.now()});
+                }
+                sendResponse({author});
+            })
+            .catch(error => {
+                sendResponse({error: error.message});
+            });
+
+        return true; // allow async sendResponse
     }
 });
+
+function addToTopicCreatorCache(topicId, data) {
+    if (topicCreatorCache.size >= MAX_CACHE_SIZE) {
+        // Delete the oldest entry (not optimal for true LRU)
+        const oldestKey = topicCreatorCache.keys().next().value;
+        topicCreatorCache.delete(oldestKey);
+    }
+    topicCreatorCache.set(topicId, data);
+}
+
 
 async function updateBadgePause() {
     chrome.storage.local.get(["paused"], (data) => {
@@ -86,7 +126,7 @@ async function fetchTrollListUrl(url) {
 
         if (/^https:\/\/eksisozluk\.com\/entry\/\d+$/i.test(url)) {
             const entryId = url.match(/\d+$/)?.[0];
-            const usernames = extractBiriUsernamesFromHTML(text, entryId);
+            const usernames = extractBiriUsernamesFromEntryHTML(text, entryId);
             usernames.forEach(name => trolls.push(normalizeUsername(name)));
         }
 
@@ -144,7 +184,7 @@ async function fetchAllTrollLists() {
     });
 }
 
-function extractBiriUsernamesFromHTML(html, entryId) {
+function extractBiriUsernamesFromEntryHTML(html, entryId) {
     const usernames = new Set();
 
     // 1. Get the relevant <li> block for the given entry ID
@@ -165,6 +205,22 @@ function extractBiriUsernamesFromHTML(html, entryId) {
     const biriReg2 = /https:\/\/eksisozluk\.com\/biri\/([^"'<> \n\r\t\/]+)/gi;
     let match;
     while ((match = biriReg2.exec(divHtml)) !== null) {
+        const username = decodeURIComponent(match[1])
+            .toLowerCase()
+            .trim()
+            .replace(/\s+/g, ' ');
+        usernames.add(username);
+    }
+
+    return [...usernames];
+}
+
+function extractBiriUsernamesFromHTML(html) {
+    const usernames = new Set();
+    // Extract all /biri/ links inside the content
+    const biriReg2 = /\/biri\/([^"'<> \n\r\t\/]+)/gi;
+    let match;
+    while ((match = biriReg2.exec(html)) !== null) {
         const username = decodeURIComponent(match[1])
             .toLowerCase()
             .trim()
@@ -201,4 +257,51 @@ async function syncTrollList() {
     combineTrollLists()
 }
 
+function fetchCreatorInfo(topicId) {
+    return limit(async () => {
+        const url = `https://eksisozluk.com/topic/gettopiccreatorinfo?topicId=${topicId}&_=${Date.now()}`;
+        const options = {
+            method: "GET",
+            headers: {
+                "X-Requested-With": "XMLHttpRequest",
+                "Accept": "application/json",
+                "Content-Type": "application/json"
+            }
+        };
 
+        try {
+            const response = await fetch(url, options);
+            if (!response.ok) {
+                throw new Error(`HTTP ${response.status}`);
+            }
+
+            const html = await response.text();
+            if (!html) throw new Error("Author not found in response");
+
+            const usernames = extractBiriUsernamesFromHTML(html);
+            return usernames?.[0] || "unknown";
+        } catch (error) {
+            console.error('Error fetching topic creator info:', topicId, error);
+            return null;
+        }
+    });
+}
+
+function createRateLimiter(interval = 1000) {
+    let queue = Promise.resolve();
+    return function rateLimited(task) {
+        const run = () => new Promise(res => setTimeout(res, interval)).then(task);
+        queue = queue.then(run, run); // ensure errors don’t break the chain
+        return queue;
+    };
+}
+
+
+function cleanTopicCreatorCache() {
+    const now = Date.now();
+    for (const [topicId, {timestamp}] of topicCreatorCache.entries()) {
+        if (now - timestamp > CACHE_DURATION) {
+            topicCreatorCache.delete(topicId);
+        }
+    }
+}

@@ -22,18 +22,75 @@ chrome.storage.local.get(["paused", "trollList", "trollMode", "showTrollTopicWar
         return;
     }
 
-
     const isFirstPage = !window.location.search.includes('p=');
     const isEntryPage = window.location.pathname.startsWith("/entry/")
     const entries = document.querySelectorAll("li[data-author]");
-    const blockedCount = blockTrollEntries(entries, trolls || [], mode)
-    if (showWarning && isFirstPage && !isEntryPage && entries.length > 0) {
-        highlightTrollTopics(entries, trolls, blockedCount);
+
+    // block entries
+    blockedCount = blockTrollEntries(entries, trolls || [], mode);
+
+    // highlight topics
+    if (showWarning) {
+        if (!isEntryPage && entries.length > 0) {
+            highlightTrollTopic(trolls, blockedCount);
+        }
+        if (document.querySelector('.main-left-frame')) {
+            highlightTrollTopicsInLeftFrame(trolls);
+        }
     }
+
+    // observe popups
     observeAllFavoritePopups(trolls);
 
     chrome.runtime.sendMessage({type: "updateBadge", count: blockedCount});
 });
+
+
+function getTopicCreator(topicId) {
+    return new Promise((resolve, reject) => {
+        chrome.runtime.sendMessage(
+            {type: 'getTopicCreator', topicId},
+            response => {
+                if (response.error) {
+                    reject(new Error(response.error));
+                } else {
+                    resolve(response.author);
+                }
+            }
+        );
+    });
+}
+
+function highlightTrollTopicsInLeftFrame(trolls) {
+    const topicList = document.querySelector("ul.topic-list");
+    if (!topicList) return;
+
+    const topicLinks = topicList.querySelectorAll("a[href^='/']");
+
+    topicLinks.forEach(link => {
+        const topicId = link.getAttribute("href").match(/--(\d+)/)?.[1];
+        if (!topicId) return;
+
+        const li = link.closest('li');
+        if (!li) return;
+
+        getTopicCreator(topicId)
+            .then(author => {
+                if (author && trolls.includes(normalizeUsername(author))) {
+                    li.style.fontStyle = 'italic';
+                    li.style.opacity = '0.6';
+                    li.style.backgroundColor = 'rgba(255, 255, 0, 0.1)';
+                    li.style.padding = '4px';
+                    li.style.borderRadius = '4px';
+                    const warningIcon = document.createElement('span');
+                    li.firstElementChild.appendChild(warningIcon);
+                }
+            })
+            .catch(ex => {
+                console.log(ex);
+            });
+    });
+}
 
 function highlightTrollProfilePage() {
     const container = document.querySelector("#nick-container");
@@ -175,24 +232,31 @@ function highlightTrollsInFavoritesList(ul, trollList) {
     });
 }
 
-function highlightTrollTopics(entries, trolls, blockedCount) {
-    const firstAuthor = normalizeUsername(entries[0].getAttribute("data-author"));
-    if (trolls.includes(firstAuthor) || blockedCount >= 3) {
-        const subTitle = document.querySelector(".sub-title-menu");
-        if (!subTitle) return;
+async function highlightTrollTopic(trolls, blockedCount) {
+    const topicId = window.location.pathname.match(/--(\d+)/)?.[1];
+    if (!topicId) return;
 
-        const warning = document.createElement("div");
-        warning.textContent = "⚠️ muhtemel troll başlık";
-        warning.style.backgroundColor = "rgba(255, 255, 0, 0.2)";
-        warning.style.border = "1px dashed #de2f42";
-        warning.style.borderRadius = "4px";
-        warning.style.padding = "6px 10px";
-        warning.style.marginTop = "8px";
-        warning.style.fontSize = "inherit";
-        warning.style.color = "inherit";
-        warning.style.display = "inline-block";
+    try {
+        const author = await getTopicCreator(topicId);
+        if (trolls.includes(normalizeUsername(author)) || blockedCount >= 5) {
+            const subTitle = document.querySelector(".sub-title-menu");
+            if (!subTitle) return;
 
-        subTitle.appendChild(warning);
+            const warning = document.createElement("div");
+            warning.textContent = "⚠️ muhtemel troll başlık";
+            warning.style.backgroundColor = "rgba(255, 255, 0, 0.2)";
+            warning.style.opacity = '0.6';
+            warning.style.borderRadius = "4px";
+            warning.style.padding = "6px 10px";
+            warning.style.marginTop = "8px";
+            warning.style.fontSize = "inherit";
+            warning.style.color = "inherit";
+            warning.style.display = "inline-block";
+
+            subTitle.appendChild(warning);
+        }
+    } catch (ex) {
+        console.log(ex);
     }
 }
 
@@ -200,7 +264,6 @@ function blockTrollEntries(entries, trolls, mode) {
     entries.forEach(entry => {
         const author = normalizeUsername(entry.getAttribute("data-author"));
         if (trolls.includes(author)) {
-            console.log("troll found", author)
             if (mode === "hide") {
                 entry.style.display = "none";
             } else {
@@ -281,5 +344,3 @@ function collapseContent(entry) {
     showLinkWrapper.appendChild(link);
     content.appendChild(showLinkWrapper);
 }
-
-
