@@ -34,9 +34,8 @@ chrome.storage.local.get(["paused", "trollList", "trollMode", "showTrollTopicWar
         if (!isEntryPage && entries.length > 0) {
             highlightTrollTopic(trolls, blockedCount);
         }
-        if (document.querySelector('.main-left-frame')) {
-            highlightTrollTopicsInLeftFrame(trolls);
-        }
+        highlightTrollTopicsInLeftFrame(trolls);
+        startObservingLeftFrame(() => highlightTrollTopicsInLeftFrame(trolls));
     }
 
     // observe popups
@@ -45,6 +44,28 @@ chrome.storage.local.get(["paused", "trollList", "trollMode", "showTrollTopicWar
     chrome.runtime.sendMessage({type: "updateBadge", count: blockedCount});
 });
 
+let isUpdating = false;
+let leftFrameObserver;
+
+function startObservingLeftFrame(callback) {
+    const target = document.querySelector('.main-left-frame');
+    if (!target) return;
+
+    if (leftFrameObserver) {
+        leftFrameObserver.disconnect();
+    }
+
+    let debounceTimer;
+    leftFrameObserver = new MutationObserver(() => {
+        if (isUpdating) return;
+        clearTimeout(debounceTimer);
+        debounceTimer = setTimeout(() => {
+            callback();
+        }, 500);
+    });
+
+    leftFrameObserver.observe(target, {childList: true, subtree: true});
+}
 
 function getTopicCreator(topicId) {
     return new Promise((resolve, reject) => {
@@ -65,16 +86,17 @@ function highlightTrollTopicsInLeftFrame(trolls) {
     const topicList = document.querySelector("ul.topic-list");
     if (!topicList) return;
 
-    const topicLinks = topicList.querySelectorAll("a[href^='/']");
+    isUpdating = true;
 
-    topicLinks.forEach(link => {
+    const topicLinks = Array.from(topicList.querySelectorAll("a[href^='/']"));
+    const promises = topicLinks.map(link => {
         const topicId = link.getAttribute("href").match(/--(\d+)/)?.[1];
         if (!topicId) return;
 
         const li = link.closest('li');
         if (!li) return;
 
-        getTopicCreator(topicId)
+        return getTopicCreator(topicId)
             .then(author => {
                 if (author && trolls.includes(normalizeUsername(author))) {
                     li.style.fontStyle = 'italic';
@@ -90,6 +112,10 @@ function highlightTrollTopicsInLeftFrame(trolls) {
                 console.log(ex);
             });
     });
+
+    Promise.all(promises).finally(() => {
+        isUpdating = false;
+     });
 }
 
 function highlightTrollProfilePage() {
@@ -106,10 +132,8 @@ function highlightTrollProfilePage() {
         warning.style.fontSize = "inherit";
         warning.style.color = "inherit";
         warning.style.display = "inline-block";
-
         container.appendChild(warning);
     }
-
 }
 
 function injectWhitelistButton(username) {
