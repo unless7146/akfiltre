@@ -6,6 +6,7 @@ chrome.storage.local.get(["paused", "trollList", "trollMode", "showTrollTopicWar
     const mode = data.trollMode || "hide";
     const showWarning = data.showTrollTopicWarning !== false;
     const trolls = (data.trollList || []).map(normalizeUsername);
+    const userLoggedIn = !document.querySelector('#top-login-link');
 
     if (window.location.pathname.startsWith("/takip/") || window.location.pathname.startsWith("/takipci/")) {
         highlightTrollsInFollowList(trolls);
@@ -30,7 +31,7 @@ chrome.storage.local.get(["paused", "trollList", "trollMode", "showTrollTopicWar
     blockedCount = blockTrollEntries(entries, trolls || [], mode);
 
     // highlight topics
-    if (showWarning) {
+    if (userLoggedIn && showWarning) {
         if (!isEntryPage && entries.length > 0) {
             highlightTrollTopic(trolls, blockedCount);
         }
