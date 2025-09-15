@@ -93,11 +93,24 @@
             color: #444;
         }
 
-        .footer {
-            margin-top: 10px;
-            font-size: 11px;
+        #footer {
+            display: flex;
+            justify-content: center;   /* ortada hizala */
+            align-items: center;
+            position: relative;        /* versiyonu sağa sabitlemek için */
+            margin-top: 8px;
+            font-size: 12px;
+            padding: 0 6px;
+        }
+
+        .heart {
             text-align: center;
-            color: #999;
+        }
+
+        #ext-version {
+            position: absolute;
+            right: 6px;     /* sağ kenara sabitle */
+            opacity: .5;
         }
 
         .logo {
@@ -226,6 +239,9 @@
 </div>
 
 
-<div class="footer">❤️</div>
+<div id="footer">
+  <span class="heart">❤️</span>
+  <span id="ext-version" class="muted"></span>
+</div>
 </body>
 </html>

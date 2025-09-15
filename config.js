@@ -1,4 +1,4 @@
-const whitelistEl = document.getElementById("whitelist");
+const whitelistEl = document.getElementById("whitelist-container");
 const inputEl = document.getElementById("whitelistInput");
 const addBtn = document.getElementById("addWhitelistBtn");
 const checkbox = document.getElementById("useDefaultList");
@@ -15,7 +15,7 @@ const TROLL_LIST_URL = "https://raw.githubusercontent.com/unless7146/stardust390
  * useDefaultList
  */
 chrome.storage.local.get(["useDefaultList", "defaultList"], (data) => {
-    checkbox.checked = data.useDefaultList || true;
+    checkbox.checked = data.useDefaultList ?? true;
     const defaultList = data.defaultList || {
         url: TROLL_LIST_URL,
         lastSync: undefined,

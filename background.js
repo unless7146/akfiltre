@@ -1,4 +1,4 @@
-const TROLL_LIST_URL = "https://raw.githubusercontent.com/unless7146/stardust3903/refs/heads/main/173732994.txt";
+const TROLL_LIST_URL = "https://raw.githubusercontent.com/unless7146/stardust3903/main/173732994.txt";
 
 //cache
 const topicCreatorCache = new Map();
@@ -13,7 +13,7 @@ chrome.runtime.onStartup.addListener(syncTrollList);
 chrome.runtime.onInstalled.addListener(syncTrollList);
 chrome.runtime.onStartup.addListener(cleanTopicCreatorCache);
 
-chrome.alarms.create("updateTrollList", {periodInMinutes: 60 * 24}); // recheck every 24 hours
+chrome.alarms.create("updateTrollList", { periodInMinutes: 60 * 24 }); // recheck every 24 hours
 chrome.alarms.onAlarm.addListener((alarm) => {
     if (alarm.name === "updateTrollList") {
         syncTrollList();
@@ -26,61 +26,56 @@ chrome.tabs.onActivated.addListener(() => {
 
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     if (message.type === "updateBadge") {
-        chrome.storage.local.get(["trollList", "paused"], (data) => {
-            if (data.paused) return;
-            chrome.action.setBadgeText({
-                text: message.count > 0 ? message.count.toString() : ""
-            });
-            chrome.action.setBadgeBackgroundColor({color: "#efb73e"});
-            chrome.storage.local.set({blockedThisPage: message.count});
-            chrome.storage.local.get(["totalBlocked"], (data) => {
-                const total = data.totalBlocked || 0;
-                chrome.storage.local.set({totalBlocked: total + message.count});
-            });
-        });
+        (async () => {
+            const { paused, totalBlocked = 0 } = await storageGet(["paused", "totalBlocked"]);
+            if (paused) return;
+            chrome.action.setBadgeText({ text: message.count > 0 ? String(message.count) : "" });
+            chrome.action.setBadgeBackgroundColor({ color: "#efb73e" });
+            await storageSet({ blockedThisPage: message.count, totalBlocked: totalBlocked + message.count });
+        })();
     } else if (message.type === "updateBadgeOnToggle") {
         updateBadgePause();
     } else if (message.type === "syncTrollList") {
-        syncTrollList().then(() => sendResponse({success: true})); // send response after sync
+        syncTrollList().then(() => sendResponse({ success: true })); // send response after sync
         return true; // needed to use async sendResponse
     } else if (message.type === "addToWhitelist") {
-        chrome.storage.local.get(["whitelist"], (data) => {
-            const whitelist = new Set(data.whitelist || []);
-            whitelist.add(normalizeUsername(message.username));
-            chrome.storage.local.set({whitelist: Array.from(whitelist)}, () => {
-                combineTrollLists();
-                sendResponse({success: true});
-            });
-        });
+        (async () => {
+            const { whitelist = [] } = await storageGet(["whitelist"]);
+            const set = new Set(whitelist);
+            set.add(normalizeUsername(message.username));
+            await storageSet({ whitelist: Array.from(set) });
+            await combineTrollLists();
+            sendResponse({ success: true });
+        })();
         return true;
     } else if (message.type === "removeFromWhitelist") {
-        chrome.storage.local.get(["whitelist"], (data) => {
-            const whitelist = new Set(data.whitelist || []);
-            whitelist.delete(normalizeUsername(message.username));
-            chrome.storage.local.set({whitelist: Array.from(whitelist)}, () => {
-                combineTrollLists();
-                sendResponse({success: true});
-            });
-        });
+        (async () => {
+            const { whitelist = [] } = await storageGet(["whitelist"]);
+            const set = new Set(whitelist);
+            set.delete(normalizeUsername(message.username));
+            await storageSet({ whitelist: Array.from(set) });
+            await combineTrollLists();
+            sendResponse({ success: true });
+        })();
         return true;
     } else if (message.type === 'getTopicCreator') {
-        const {topicId} = message;
+        const { topicId } = message;
         const cached = topicCreatorCache.get(topicId);
 
         if (cached && (Date.now() - cached.timestamp < CACHE_DURATION)) {
-            sendResponse({author: cached.author});
+            sendResponse({ author: cached.author });
             return;
         }
 
         fetchCreatorInfo(topicId)
             .then(author => {
                 if (author && author != null) {
-                    addToTopicCreatorCache(topicId, {author, timestamp: Date.now()});
+                    addToTopicCreatorCache(topicId, { author, timestamp: Date.now() });
                 }
-                sendResponse({author});
+                sendResponse({ author });
             })
             .catch(error => {
-                sendResponse({error: error.message});
+                sendResponse({ error: error.message });
             });
 
         return true; // allow async sendResponse
@@ -98,23 +93,37 @@ function addToTopicCreatorCache(topicId, data) {
 
 
 async function updateBadgePause() {
-    chrome.storage.local.get(["paused"], (data) => {
-        chrome.action.setBadgeBackgroundColor({
-            color: [0, 0, 0, 0] // Fully transparent black
-        });
-        if (data.paused) {
-            chrome.storage.local.set({blockedThisPage: 0});
-            chrome.action.setBadgeText({text: "⏸"});
-        } else {
-            chrome.action.setBadgeText({text: ""});
-        }
-    });
+    const { paused } = await storageGet(["paused"]);
+    chrome.action.setBadgeBackgroundColor({ color: [0, 0, 0, 0] });
+    if (paused) {
+        await storageSet({ blockedThisPage: 0 });
+        chrome.action.setBadgeText({ text: "⏸" });
+    } else {
+        chrome.action.setBadgeText({ text: "" });
+    }
+}
+
+async function fetchWithRetry(url, {tries=3, timeoutMs=8000} = {}) {
+  for (let i=0; i<tries; i++) {
+    const ctrl = new AbortController();
+    const t = setTimeout(() => ctrl.abort(), timeoutMs);
+    try {
+      const res = await fetch(url, { signal: ctrl.signal, cache: "no-store" });
+      if (!res.ok) throw new Error(res.statusText);
+      clearTimeout(t);
+      return await res.text();
+    } catch (e) {
+      clearTimeout(t);
+      if (i === tries - 1) throw e;
+      await new Promise(r => setTimeout(r, 500 * (i+1))); // backoff
+    }
+  }
 }
 
 async function fetchTrollListUrl(url) {
     try {
-        const response = await fetch(url);
-        const text = await response.text();
+        const textRaw = await fetchWithRetry(url);
+        const text = textRaw.replace(/^\uFEFF/, ""); 
         const trolls = [];
 
         if (url.endsWith(".txt")) {
@@ -133,7 +142,8 @@ async function fetchTrollListUrl(url) {
         return Array.from(new Set(trolls));
     } catch (err) {
         console.warn(`list fetch failed from: ${url}`, err);
-        return []; // fallback on failure
+        const { defaultList } = await storageGet(["defaultList"]);
+        return Array.isArray(defaultList?.trolls) ? defaultList.trolls : [];    
     }
 }
 
@@ -142,46 +152,51 @@ function normalizeUsername(name) {
 }
 
 async function fetchAllTrollLists() {
-    return new Promise((resolve) => {
-        chrome.storage.local.get(["useDefaultList", "customLists", "defaultList"], async (data) => {
-            const useDefault = data.useDefaultList ?? true;
-            const customLists = data.customLists || [];
-            const updatedLists = [...customLists];
+    const data = await storageGet(["useDefaultList", "customLists", "defaultList"]);
+    const useDefault = data.useDefaultList ?? true;
+    const customLists = data.customLists || [];
+    const updatedLists = [...customLists];
 
-            if (useDefault) {
-                try {
-                    const defaultTrolls = await fetchTrollListUrl(TROLL_LIST_URL);
-                    const defaultList = {
-                        url: TROLL_LIST_URL,
-                        lastSync: Date.now(),
-                        trolls: defaultTrolls
-                    };
-                    chrome.storage.local.set({defaultList});
-                    updatedLists.unshift(defaultList); // put default first
-                } catch (err) {
-                    console.warn("Default list fetch failed:", err);
-                }
-            }
+    if (useDefault) {
+        try {
+            const defaultTrolls = await fetchTrollListUrl(TROLL_LIST_URL);
+            const defaultList = {
+                url: TROLL_LIST_URL,
+                lastSync: Date.now(),
+                trolls: defaultTrolls
+            };
+            chrome.storage.local.set({ defaultList });
+            updatedLists.unshift(defaultList); // put default first
+        } catch (err) {
+            console.warn("Default list fetch failed:", err);
+        }
+    }
 
-            // Fetch all custom lists
-            for (const list of customLists) {
-                try {
-                    list.trolls = await fetchTrollListUrl(list.url);
-                    list.lastSync = Date.now();
-                } catch (err) {
-                    console.warn(`Failed to update list: ${list.url}`, err);
-                }
-            }
+    // Fetch all custom lists
+    for (const list of customLists) {
+        try {
+            list.trolls = await fetchTrollListUrl(list.url);
+            list.lastSync = Date.now();
+        } catch (err) {
+            console.warn(`Failed to update list: ${list.url}`, err);
+        }
+    }
 
-            // Save updated customLists (excluding default)
-            chrome.storage.local.set({customLists});
+    // Save updated customLists (excluding default)
+    await storageSet({ customLists });
 
-            // Merge trolls from all lists
-            const allTrolls = updatedLists.flatMap(list => list.trolls || []);
-            chrome.storage.local.set({trollListLastUpdate: Date.now()});
-            resolve(Array.from(new Set(allTrolls)));
-        });
-    });
+    await storageSet({ trollListLastUpdate: Date.now() });
+
+    // Merge trolls from all lists
+    return Array.from(new Set(updatedLists.flatMap(l => l.trolls || [])));
+}
+
+function storageSet(obj) {
+    return new Promise(res => chrome.storage.local.set(obj, res));
+}
+
+function storageGet(keys) {
+    return new Promise(res => chrome.storage.local.get(keys, res));
 }
 
 function extractBiriUsernamesFromEntryHTML(html, entryId) {
@@ -231,30 +246,22 @@ function extractBiriUsernamesFromHTML(html) {
     return [...usernames];
 }
 
-function combineTrollLists() {
-    chrome.storage.local.get(["useDefaultList", "customLists", "defaultList", "whitelist"], (data) => {
-        const {useDefaultList = true, customLists = [], defaultList = {trolls: []}, whitelist = []} = data;
-
-        const whitelistSet = new Set(whitelist.map(u => u.toLowerCase()));
-
-        const combined = [
-            ...(useDefaultList && defaultList && Array.isArray(defaultList.trolls) ? defaultList.trolls : []),
-            ...customLists.flatMap(list => Array.isArray(list.trolls) ? list.trolls : [])
-        ];
-
-        const trollSet = new Set(
-            combined
-                .map(name => name.trim().toLowerCase())
-                .filter(name => name && !whitelistSet.has(name))
-        );
-
-        chrome.storage.local.set({trollList: Array.from(trollSet), trollListSize: trollSet.size});
-    });
+async function combineTrollLists() {
+    const { useDefaultList = true, customLists = [], defaultList = { trolls: [] }, whitelist = [] } = await storageGet(["useDefaultList", "customLists", "defaultList", "whitelist"]);
+    const whitelistSet = new Set(whitelist.map(u => u.toLowerCase()));
+    const combined = [
+        ...(useDefaultList && defaultList && Array.isArray(defaultList.trolls) ? defaultList.trolls : []),
+        ...customLists.flatMap(list => Array.isArray(list.trolls) ? list.trolls : [])
+    ];
+    const trollSet = new Set(
+        combined.map(name => name.trim().toLowerCase()).filter(name => name && !whitelistSet.has(name))
+    );
+    await storageSet({ trollList: Array.from(trollSet), trollListSize: trollSet.size });
 }
 
 async function syncTrollList() {
     await fetchAllTrollLists();
-    combineTrollLists()
+    await combineTrollLists()
 }
 
 function fetchCreatorInfo(topicId) {
@@ -299,7 +306,7 @@ function createRateLimiter(interval = 1000) {
 
 function cleanTopicCreatorCache() {
     const now = Date.now();
-    for (const [topicId, {timestamp}] of topicCreatorCache.entries()) {
+    for (const [topicId, { timestamp }] of topicCreatorCache.entries()) {
         if (now - timestamp > CACHE_DURATION) {
             topicCreatorCache.delete(topicId);
         }

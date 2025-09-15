@@ -6,6 +6,7 @@ document.addEventListener("DOMContentLoaded", () => {
     const lastUpdateEl = document.getElementById("last-update");
     const trollModeSelect = document.getElementById("trollMode");
     const topicWarningToggle = document.getElementById("topicWarningToggle");
+    const verEl = document.getElementById("ext-version");
 
     function updateStats() {
         chrome.storage.local.get(["paused", "totalBlocked", "blockedThisPage", "trollListLastUpdate", 'trollListSize'], (data) => {
@@ -13,7 +14,7 @@ document.addEventListener("DOMContentLoaded", () => {
             toggleBtn.classList.toggle("paused", data.paused);
             pageCountEl.textContent = data.blockedThisPage || 0;
             totalCountEl.textContent = data.totalBlocked || 0;
-            trollListSize.textContent = data.trollListSize || "";
+            trollListSize.textContent = (data.trollListSize ?? 0).toString();
 
             const updatedAt = data.trollListLastUpdate;
 
@@ -69,6 +70,18 @@ document.addEventListener("DOMContentLoaded", () => {
     document.getElementById("open-config").addEventListener("click", () => {
         chrome.runtime.openOptionsPage();
     });
+
+    chrome.storage.onChanged.addListener((changes) => {
+        if (changes.trollListSize || changes.trollListLastUpdate ||
+            changes.totalBlocked || changes.blockedThisPage || changes.paused) {
+        updateStats();
+        }
+    });
+
+    if (verEl) {
+        const { version } = chrome.runtime.getManifest();
+        verEl.textContent = `v${version}`;
+    }
 
     updateStats();
 });
